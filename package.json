@@ -1,0 +1,93 @@
+{
+  "name": "piping",
+  "displayName": "Piping - Modern Pip Manager",
+  "description": "Advanced pip package management for Python projects directly in VS Code",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Navot/piping-vscode.git"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:piping.openDashboard",
+    "onView:pipingExplorer"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "piping.openDashboard",
+        "title": "Piping: Open Dashboard"
+      },
+      {
+        "command": "piping.refreshPackages",
+        "title": "Piping: Refresh Package List"
+      },
+      {
+        "command": "piping.installPackage",
+        "title": "Piping: Install Package"
+      },
+      {
+        "command": "piping.uninstallPackage",
+        "title": "Piping: Uninstall Package"
+      },
+      {
+        "command": "piping.updatePackage",
+        "title": "Piping: Update Package"
+      },
+      {
+        "command": "piping.createEnvironment",
+        "title": "Piping: Create Virtual Environment"
+      },
+      {
+        "command": "piping.switchEnvironment",
+        "title": "Piping: Switch Virtual Environment"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "piping-explorer",
+          "title": "Piping",
+          "icon": "resources/piping-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "piping-explorer": [
+        {
+          "id": "pipingExplorer",
+          "name": "Packages"
+        },
+        {
+          "id": "pipingEnvironments",
+          "name": "Environments"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "pipingExplorer",
+        "contents": "No Python environment detected.\n[Create Environment](command:piping.createEnvironment)"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "lint": "eslint src --ext ts",
+    "watch": "tsc -watch -p ./",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/node": "^16.x.x",
+    "@types/vscode": "^1.60.0",
+    "typescript": "^4.x.x"
+  },
+  "dependencies": {}
+}
