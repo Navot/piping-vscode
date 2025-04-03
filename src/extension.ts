@@ -54,6 +54,14 @@ export async function activate(context: vscode.ExtensionContext) {
             await commandManager.updatePackage(packageItem);
         }),
 
+        vscode.commands.registerCommand('piping.updateSelectedPackages', async (packageNames: string[]) => {
+            await commandManager.updateSelectedPackages(packageNames);
+        }),
+        
+        vscode.commands.registerCommand('piping.updateAllPackages', async () => {
+            await commandManager.updateAllPackages();
+        }),
+
         vscode.commands.registerCommand('piping.createEnvironment', async () => {
             await commandManager.createEnvironment();
         }),
