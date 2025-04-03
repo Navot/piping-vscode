@@ -19,26 +19,14 @@ This PR enhances the Python integration in the Piping extension with the followi
   - Handles command execution with appropriate error handling
   - Logs all operations to the output channel for debugging
 
-## Package Management
+## Dashboard Improvements
 
-- Improved package listing with:
-  - Description metadata retrieval
-  - Better update detection
-  - Error handling with user-friendly messages
-
-## Package Search
-
-- Created a PyPI-compatible search functionality that:
-  - Uses a custom Python script to query PyPI API
-  - Falls back to local package list search if PyPI search fails
-  - Provides rich package information including descriptions
-
-## Virtual Environment Management
-
-- Enhanced virtual environment detection:
-  - Finds environments in multiple standard locations
-  - Validates environments properly
-  - Handles virtual environment creation with better error reporting
+- Added package data caching mechanism:
+  - Prevents unnecessary package reloading when switching windows
+  - Shows the last update timestamp for package data
+  - Automatically refreshes data when needed (15-minute cache timeout)
+  - Forces refresh after package installations, updates, or removals
+  - Improves overall dashboard performance and responsiveness
 
 ## Other Improvements
 
