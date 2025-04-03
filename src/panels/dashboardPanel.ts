@@ -2,6 +2,12 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { PythonExecutor, PackageInfo } from '../utils/pythonExecutor';
 
+// Add cache interface
+interface PackageCache {
+    packages: PackageInfo[];
+    timestamp: number;
+}
+
 export class PipingDashboardPanel {
     public static currentPanel: PipingDashboardPanel | undefined;
     
@@ -9,6 +15,12 @@ export class PipingDashboardPanel {
     private readonly _extensionUri: vscode.Uri;
     private readonly _pythonExecutor: PythonExecutor;
     private _disposables: vscode.Disposable[] = [];
+    
+    // Add static cache property
+    private static _packageCache: PackageCache | undefined;
+    
+    // Cache timeout in milliseconds (15 minutes)
+    private static readonly CACHE_TIMEOUT = 15 * 60 * 1000;
     
     public static createOrShow(extensionUri: vscode.Uri, pythonExecutor: PythonExecutor) {
         const column = vscode.window.activeTextEditor
@@ -34,7 +46,10 @@ export class PipingDashboardPanel {
                 localResourceRoots: [
                     vscode.Uri.joinPath(extensionUri, 'resources'),
                     vscode.Uri.joinPath(extensionUri, 'out')
-                ]
+                ],
+                
+                // Enable state retention
+                retainContextWhenHidden: true
             }
         );
         
@@ -57,7 +72,8 @@ export class PipingDashboardPanel {
         this._panel.onDidChangeViewState(
             () => {
                 if (this._panel.visible) {
-                    this._update();
+                    // Only update HTML content, don't reload package data
+                    this._updateHtmlOnly();
                 }
             },
             null,
@@ -69,7 +85,7 @@ export class PipingDashboardPanel {
             async (message) => {
                 switch (message.command) {
                     case 'refreshPackages':
-                        await this._updatePackageData();
+                        await this._updatePackageData(true); // Force refresh
                         break;
                     case 'installPackage':
                         if (message.package) {
@@ -98,28 +114,75 @@ export class PipingDashboardPanel {
         );
     }
     
+    // New method to just update HTML without reloading data
+    private async _updateHtmlOnly() {
+        const webview = this._panel.webview;
+        this._panel.title = 'Piping Dashboard';
+        this._panel.webview.html = this._getHtmlForWebview(webview);
+        
+        // Send cached package data if available
+        if (PipingDashboardPanel._packageCache) {
+            this._panel.webview.postMessage({
+                command: 'updatePackages',
+                packages: PipingDashboardPanel._packageCache.packages,
+                timestamp: PipingDashboardPanel._packageCache.timestamp
+            });
+        } else {
+            // If no cache exists, load package data
+            await this._updatePackageData(false);
+        }
+    }
+    
     private async _update() {
         const webview = this._panel.webview;
         
         this._panel.title = 'Piping Dashboard';
         this._panel.webview.html = this._getHtmlForWebview(webview);
         
-        // Load package data
-        await this._updatePackageData();
+        // Load package data only if needed
+        await this._updatePackageData(false);
     }
     
-    private async _updatePackageData() {
+    private async _updatePackageData(forceRefresh: boolean = false) {
         try {
+            // Check if we can use cached data
+            const now = Date.now();
+            if (!forceRefresh && 
+                PipingDashboardPanel._packageCache && 
+                (now - PipingDashboardPanel._packageCache.timestamp) < PipingDashboardPanel.CACHE_TIMEOUT) {
+                
+                // Use cached data
+                this._panel.webview.postMessage({
+                    command: 'updatePackages',
+                    packages: PipingDashboardPanel._packageCache.packages,
+                    timestamp: PipingDashboardPanel._packageCache.timestamp
+                });
+                return;
+            }
+            
+            // Show loading indicator
+            this._panel.webview.postMessage({
+                command: 'loadingPackages'
+            });
+            
             // Get installed packages
             const packages = await this._pythonExecutor.getInstalledPackages();
+            
+            // Update cache
+            PipingDashboardPanel._packageCache = {
+                packages,
+                timestamp: Date.now()
+            };
             
             // Update the webview with package data
             this._panel.webview.postMessage({
                 command: 'updatePackages',
-                packages
+                packages: packages,
+                timestamp: PipingDashboardPanel._packageCache.timestamp
             });
         } catch (error) {
             console.error('Error updating package data:', error);
+            vscode.window.showErrorMessage(`Error loading packages: ${error}`);
         }
     }
     
@@ -144,7 +207,7 @@ export class PipingDashboardPanel {
                 
                 if (success) {
                     vscode.window.showInformationMessage(`Successfully installed ${packageSpec}`);
-                    await this._updatePackageData();
+                    await this._updatePackageData(true); // Force refresh after install
                 } else {
                     vscode.window.showErrorMessage(`Failed to install ${packageSpec}`);
                 }
@@ -177,7 +240,7 @@ export class PipingDashboardPanel {
                 
                 if (success) {
                     vscode.window.showInformationMessage(`Successfully uninstalled ${packageName}`);
-                    await this._updatePackageData();
+                    await this._updatePackageData(true); // Force refresh after uninstall
                 } else {
                     vscode.window.showErrorMessage(`Failed to uninstall ${packageName}`);
                 }
@@ -198,7 +261,7 @@ export class PipingDashboardPanel {
                 
                 if (success) {
                     vscode.window.showInformationMessage(`Successfully updated ${packageName}`);
-                    await this._updatePackageData();
+                    await this._updatePackageData(true); // Force refresh after update
                 } else {
                     vscode.window.showErrorMessage(`Failed to update ${packageName}`);
                 }
@@ -377,6 +440,25 @@ export class PipingDashboardPanel {
             border: 1px solid var(--vscode-panel-border);
             position: relative;
         }
+        
+        .timestamp-info {
+            font-size: 0.8em;
+            color: var(--vscode-descriptionForeground);
+            margin-top: 8px;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .timestamp {
+            margin-right: 10px;
+        }
+        
+        .loading {
+            padding: 10px;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -387,6 +469,10 @@ export class PipingDashboardPanel {
             <input type="text" id="search-input" placeholder="Search packages...">
             <button id="search-button">Search</button>
             <button id="refresh-button">Refresh</button>
+        </div>
+        
+        <div class="timestamp-info">
+            <span class="timestamp" id="last-updated">Loading packages...</span>
         </div>
         
         <div class="tabs">
@@ -425,17 +511,27 @@ export class PipingDashboardPanel {
             // Store package data
             let installedPackages = [];
             let searchResults = [];
+            let lastUpdated = null;
             
             // Get DOM elements
             const vsCode = acquireVsCodeApi();
             const searchInput = document.getElementById('search-input');
             const searchButton = document.getElementById('search-button');
             const refreshButton = document.getElementById('refresh-button');
+            const lastUpdatedElem = document.getElementById('last-updated');
             const installedPackagesList = document.getElementById('installed-packages');
             const updatesPackagesList = document.getElementById('updates-packages');
             const searchPackagesList = document.getElementById('search-packages');
             const tabs = document.querySelectorAll('.tab');
             const tabContents = document.querySelectorAll('.tab-content');
+            
+            // Format timestamp
+            function formatTimestamp(timestamp) {
+                if (!timestamp) return 'Never';
+                
+                const date = new Date(timestamp);
+                return \`Last updated: \${date.toLocaleString()}\`;
+            }
             
             // Handle tab switching
             tabs.forEach(tab => {
@@ -476,6 +572,7 @@ export class PipingDashboardPanel {
             // Handle refresh button click
             refreshButton.addEventListener('click', () => {
                 vsCode.postMessage({ command: 'refreshPackages' });
+                lastUpdatedElem.textContent = 'Refreshing packages...';
                 installedPackagesList.innerHTML = '<div class="loading">Refreshing packages...</div>';
                 updatesPackagesList.innerHTML = '<div class="loading">Refreshing updates...</div>';
             });
@@ -582,8 +679,15 @@ export class PipingDashboardPanel {
                 const message = event.data;
                 
                 switch (message.command) {
+                    case 'loadingPackages':
+                        lastUpdatedElem.textContent = 'Loading packages...';
+                        installedPackagesList.innerHTML = '<div class="loading">Loading packages...</div>';
+                        updatesPackagesList.innerHTML = '<div class="loading">Loading updates...</div>';
+                        break;
                     case 'updatePackages':
                         installedPackages = message.packages;
+                        lastUpdated = message.timestamp;
+                        lastUpdatedElem.textContent = formatTimestamp(lastUpdated);
                         renderInstalledPackages();
                         break;
                     case 'searchResults':
