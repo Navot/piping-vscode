@@ -528,4 +528,61 @@ except Exception as e:
             return undefined;
         }
     }
+
+    /**
+     * Update multiple packages at once
+     * @param packageNames Array of package names to update
+     * @returns Object containing arrays of successfully updated and failed packages
+     */
+    public async updatePackages(packageNames: string[]): Promise<{
+        success: string[],
+        failed: string[]
+    }> {
+        if (packageNames.length === 0) {
+            return { success: [], failed: [] };
+        }
+
+        const success: string[] = [];
+        const failed: string[] = [];
+        
+        try {
+            const { command, args, envPath } = await this.getPipCommand();
+            
+            // First try to update all packages at once for efficiency
+            try {
+                const updateArgs = [...args, 'install', '--upgrade', ...packageNames];
+                await this.executeCommand(command, updateArgs, envPath);
+                
+                // If we get here, all packages were updated successfully
+                this._outputChannel.appendLine(`Successfully updated packages: ${packageNames.join(', ')}`);
+                return { 
+                    success: packageNames, 
+                    failed: [] 
+                };
+            } catch (batchError) {
+                // If batch update fails, fall back to updating packages individually
+                this._outputChannel.appendLine(`Batch update failed, falling back to individual updates: ${batchError}`);
+                
+                // Try updating each package individually
+                for (const pkgName of packageNames) {
+                    try {
+                        const updateArgs = [...args, 'install', '--upgrade', pkgName];
+                        await this.executeCommand(command, updateArgs, envPath);
+                        success.push(pkgName);
+                    } catch (error) {
+                        this._outputChannel.appendLine(`Error updating package ${pkgName}: ${error}`);
+                        failed.push(pkgName);
+                    }
+                }
+            }
+        } catch (error) {
+            this._outputChannel.appendLine(`Error in updatePackages: ${error}`);
+            return { 
+                success, 
+                failed: [...failed, ...packageNames.filter(pkg => !success.includes(pkg))] 
+            };
+        }
+        
+        return { success, failed };
+    }
 }

@@ -234,4 +234,74 @@ export class PipingCommandManager {
         
         vscode.window.showInformationMessage(`Switched to environment '${envName}'`);
     }
+
+    /**
+     * Update selected packages
+     */
+    public async updateSelectedPackages(packageNames: string[]): Promise<void> {
+        // Check if we have any packages to update
+        if (!packageNames || packageNames.length === 0) {
+            vscode.window.showInformationMessage('No packages selected for update');
+            return;
+        }
+
+        // Show progress notification
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Updating ${packageNames.length} package(s)...`,
+            cancellable: false
+        }, async (progress) => {
+            try {
+                // Update the packages
+                const result = await this.pythonExecutor.updatePackages(packageNames);
+                
+                // Show results
+                if (result.success.length > 0) {
+                    vscode.window.showInformationMessage(
+                        `Successfully updated ${result.success.length} package(s): ${result.success.join(', ')}`
+                    );
+                }
+                
+                if (result.failed.length > 0) {
+                    vscode.window.showErrorMessage(
+                        `Failed to update ${result.failed.length} package(s): ${result.failed.join(', ')}`
+                    );
+                }
+                
+                // Refresh the package list
+                this.packageProvider.refresh();
+            } catch (error) {
+                vscode.window.showErrorMessage(`Error updating packages: ${error}`);
+            }
+        });
+    }
+
+    /**
+     * Update all packages with available updates
+     */
+    public async updateAllPackages(): Promise<void> {
+        // Get all packages with updates available
+        const packages = this.packageProvider.getPackagesWithUpdates();
+        const packageNames = packages.map(pkg => pkg.name);
+        
+        if (packageNames.length === 0) {
+            vscode.window.showInformationMessage('No packages have updates available');
+            return;
+        }
+        
+        // Confirm with the user
+        const confirmation = await vscode.window.showInformationMessage(
+            `Update ${packageNames.length} package(s) with available updates?`,
+            { modal: true },
+            'Yes',
+            'No'
+        );
+        
+        if (confirmation !== 'Yes') {
+            return;
+        }
+        
+        // Call updateSelectedPackages with all upgradable packages
+        await this.updateSelectedPackages(packageNames);
+    }
 } 

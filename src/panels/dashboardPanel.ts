@@ -86,6 +86,14 @@ export class PipingDashboardPanel {
                             await this._updatePackage(message.package);
                         }
                         break;
+                    case 'updateSelectedPackages':
+                        if (message.packageNames && message.packageNames.length > 0) {
+                            await this._updateSelectedPackages(message.packageNames);
+                        }
+                        break;
+                    case 'updateAllPackages':
+                        await this._updateAllPackages();
+                        break;
                     case 'searchPackages':
                         if (message.query) {
                             await this._searchPackages(message.query);
@@ -208,6 +216,42 @@ export class PipingDashboardPanel {
         }
     }
     
+    private async _updateSelectedPackages(packageNames: string[]) {
+        try {
+            vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `Updating ${packageNames.length} packages...`,
+                cancellable: false
+            }, async () => {
+                // Execute the command to update selected packages
+                await vscode.commands.executeCommand('piping.updateSelectedPackages', packageNames);
+                
+                // Refresh the package list
+                await this._updatePackageData();
+            });
+        } catch (error) {
+            vscode.window.showErrorMessage(`Error updating packages: ${error}`);
+        }
+    }
+    
+    private async _updateAllPackages() {
+        try {
+            vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `Updating all packages with available updates...`,
+                cancellable: false
+            }, async () => {
+                // Execute the command to update all packages
+                await vscode.commands.executeCommand('piping.updateAllPackages');
+                
+                // Refresh the package list
+                await this._updatePackageData();
+            });
+        } catch (error) {
+            vscode.window.showErrorMessage(`Error updating packages: ${error}`);
+        }
+    }
+    
     private async _searchPackages(query: string) {
         try {
             vscode.window.withProgress({
@@ -277,6 +321,13 @@ export class PipingDashboardPanel {
             background-color: var(--vscode-input-background);
         }
         
+        input[type="checkbox"] {
+            width: auto;
+            display: inline-block;
+            margin-right: 8px;
+            cursor: pointer;
+        }
+        
         button {
             border: none;
             padding: var(--input-padding-vertical) var(--input-padding-horizontal);
@@ -296,6 +347,11 @@ export class PipingDashboardPanel {
             background: var(--vscode-button-activeBackground);
         }
         
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
         .dashboard {
             padding: 20px;
         }
@@ -308,6 +364,18 @@ export class PipingDashboardPanel {
         .search-box input {
             flex: 1;
             margin-right: 10px;
+        }
+        
+        .header-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .batch-actions {
+            display: flex;
+            gap: 8px;
         }
         
         .tabs {
@@ -348,6 +416,8 @@ export class PipingDashboardPanel {
         
         .package-info {
             flex: 1;
+            display: flex;
+            align-items: center;
         }
         
         .package-name {
@@ -368,6 +438,53 @@ export class PipingDashboardPanel {
             gap: 4px;
         }
         
+        .icon-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            background: transparent;
+            border: 1px solid var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            font-size: 14px;
+            cursor: pointer;
+            padding: 0;
+            transition: background-color 0.2s;
+        }
+        
+        .icon-button:hover {
+            background: var(--vscode-button-hoverBackground);
+        }
+        
+        .tooltip {
+            position: relative;
+        }
+        
+        .tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 4px 8px;
+            background-color: var(--vscode-editorWidget-background);
+            color: var(--vscode-editorWidget-foreground);
+            border-radius: 4px;
+            white-space: nowrap;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 1;
+            font-size: 12px;
+        }
+        
+        .tooltip:hover::after {
+            visibility: visible;
+            opacity: 1;
+        }
+        
         .hidden {
             display: none;
         }
@@ -376,6 +493,12 @@ export class PipingDashboardPanel {
             height: 500px;
             border: 1px solid var(--vscode-panel-border);
             position: relative;
+        }
+        
+        .select-all {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
         }
     </style>
 </head>
@@ -397,12 +520,31 @@ export class PipingDashboardPanel {
         </div>
         
         <div class="tab-content active" data-tab="installed">
+            <div class="header-actions">
+                <div class="select-all">
+                    <input type="checkbox" id="select-all-installed" aria-label="Select all packages">
+                    <label for="select-all-installed">Select All</label>
+                </div>
+                <div class="batch-actions">
+                    <button id="update-selected" class="tooltip" data-tooltip="Update selected packages" disabled>Update Selected</button>
+                </div>
+            </div>
             <div class="package-list" id="installed-packages">
                 <div class="loading">Loading packages...</div>
             </div>
         </div>
         
         <div class="tab-content" data-tab="updates">
+            <div class="header-actions">
+                <div class="select-all">
+                    <input type="checkbox" id="select-all-updates" aria-label="Select all packages with updates">
+                    <label for="select-all-updates">Select All</label>
+                </div>
+                <div class="batch-actions">
+                    <button id="update-all" class="tooltip" data-tooltip="Update all packages with available updates">Update All</button>
+                    <button id="update-selected-updates" class="tooltip" data-tooltip="Update selected packages" disabled>Update Selected</button>
+                </div>
+            </div>
             <div class="package-list" id="updates-packages">
                 <div class="loading">Loading updates...</div>
             </div>
@@ -425,6 +567,8 @@ export class PipingDashboardPanel {
             // Store package data
             let installedPackages = [];
             let searchResults = [];
+            let selectedPackages = new Set();
+            let selectedUpdates = new Set();
             
             // Get DOM elements
             const vsCode = acquireVsCodeApi();
@@ -436,6 +580,11 @@ export class PipingDashboardPanel {
             const searchPackagesList = document.getElementById('search-packages');
             const tabs = document.querySelectorAll('.tab');
             const tabContents = document.querySelectorAll('.tab-content');
+            const selectAllInstalled = document.getElementById('select-all-installed');
+            const selectAllUpdates = document.getElementById('select-all-updates');
+            const updateSelected = document.getElementById('update-selected');
+            const updateSelectedUpdates = document.getElementById('update-selected-updates');
+            const updateAll = document.getElementById('update-all');
             
             // Handle tab switching
             tabs.forEach(tab => {
@@ -478,13 +627,122 @@ export class PipingDashboardPanel {
                 vsCode.postMessage({ command: 'refreshPackages' });
                 installedPackagesList.innerHTML = '<div class="loading">Refreshing packages...</div>';
                 updatesPackagesList.innerHTML = '<div class="loading">Refreshing updates...</div>';
+                
+                // Clear selections
+                selectedPackages.clear();
+                selectedUpdates.clear();
+                updateButtonStates();
             });
+            
+            // Handle "Update Selected" button click
+            updateSelected.addEventListener('click', () => {
+                if (selectedPackages.size > 0) {
+                    const packageNames = Array.from(selectedPackages);
+                    vsCode.postMessage({ command: 'updateSelectedPackages', packageNames });
+                }
+            });
+            
+            // Handle "Update Selected Updates" button click
+            updateSelectedUpdates.addEventListener('click', () => {
+                if (selectedUpdates.size > 0) {
+                    const packageNames = Array.from(selectedUpdates);
+                    vsCode.postMessage({ command: 'updateSelectedPackages', packageNames });
+                }
+            });
+            
+            // Handle "Update All" button click
+            updateAll.addEventListener('click', () => {
+                vsCode.postMessage({ command: 'updateAllPackages' });
+            });
+            
+            // Handle select all checkbox for installed packages
+            selectAllInstalled.addEventListener('change', () => {
+                const checkboxes = document.querySelectorAll('.installed-checkbox');
+                
+                if (selectAllInstalled.checked) {
+                    checkboxes.forEach(checkbox => {
+                        checkbox.checked = true;
+                        const packageName = checkbox.getAttribute('data-package');
+                        if (packageName) {
+                            selectedPackages.add(packageName);
+                        }
+                    });
+                } else {
+                    checkboxes.forEach(checkbox => {
+                        checkbox.checked = false;
+                    });
+                    selectedPackages.clear();
+                }
+                
+                updateButtonStates();
+            });
+            
+            // Handle select all checkbox for updates
+            selectAllUpdates.addEventListener('change', () => {
+                const checkboxes = document.querySelectorAll('.updates-checkbox');
+                
+                if (selectAllUpdates.checked) {
+                    checkboxes.forEach(checkbox => {
+                        checkbox.checked = true;
+                        const packageName = checkbox.getAttribute('data-package');
+                        if (packageName) {
+                            selectedUpdates.add(packageName);
+                        }
+                    });
+                } else {
+                    checkboxes.forEach(checkbox => {
+                        checkbox.checked = false;
+                    });
+                    selectedUpdates.clear();
+                }
+                
+                updateButtonStates();
+            });
+            
+            // Update button states based on selections
+            function updateButtonStates() {
+                updateSelected.disabled = selectedPackages.size === 0;
+                updateSelectedUpdates.disabled = selectedUpdates.size === 0;
+            }
+            
+            // Handle checkbox change for installed packages
+            function handleInstalledCheckboxChange(checkbox) {
+                const packageName = checkbox.getAttribute('data-package');
+                
+                if (checkbox.checked) {
+                    selectedPackages.add(packageName);
+                } else {
+                    selectedPackages.delete(packageName);
+                    selectAllInstalled.checked = false;
+                }
+                
+                updateButtonStates();
+            }
+            
+            // Handle checkbox change for updates
+            function handleUpdatesCheckboxChange(checkbox) {
+                const packageName = checkbox.getAttribute('data-package');
+                
+                if (checkbox.checked) {
+                    selectedUpdates.add(packageName);
+                } else {
+                    selectedUpdates.delete(packageName);
+                    selectAllUpdates.checked = false;
+                }
+                
+                updateButtonStates();
+            }
             
             // Render installed packages
             function renderInstalledPackages() {
                 if (!installedPackages.length) {
                     installedPackagesList.innerHTML = '<div class="no-results">No packages installed</div>';
                     updatesPackagesList.innerHTML = '<div class="no-results">No updates available</div>';
+                    
+                    // Clear selections
+                    selectedPackages.clear();
+                    selectedUpdates.clear();
+                    updateButtonStates();
                     return;
                 }
                 
@@ -496,16 +754,19 @@ export class PipingDashboardPanel {
                 
                 // Render installed packages
                 installedPackagesList.innerHTML = installedPackages.map(pkg => {
+                    const isSelected = selectedPackages.has(pkg.name);
+                    
                     return \`
                         <div class="package-item">
                             <div class="package-info">
+                                <input type="checkbox" class="installed-checkbox" data-package="\${pkg.name}" \${isSelected ? 'checked' : ''} aria-label="Select \${pkg.name}">
                                 <span class="package-name">\${pkg.name}</span>
                                 <span class="package-version">\${pkg.version}</span>
                                 \${pkg.hasUpdate ? \`<span class="package-update">(Update available: \${pkg.latest})</span>\` : ''}
                             </div>
                             <div class="package-actions">
-                                \${pkg.hasUpdate ? \`<button class="update-button" data-package="\${pkg.name}">Update</button>\` : ''}
-                                <button class="uninstall-button" data-package="\${pkg.name}">Uninstall</button>
+                                \${pkg.hasUpdate ? \`<button class="icon-button update-button tooltip" data-package="\${pkg.name}" data-tooltip="Update to \${pkg.latest}">⟳</button>\` : ''}
+                                <button class="icon-button uninstall-button tooltip" data-package="\${pkg.name}" data-tooltip="Uninstall">🗑️</button>
                             </div>
                         </div>
                     \`;
@@ -514,23 +775,36 @@ export class PipingDashboardPanel {
                 // Render updates
                 if (packagesWithUpdates.length) {
                     updatesPackagesList.innerHTML = packagesWithUpdates.map(pkg => {
+                        const isSelected = selectedUpdates.has(pkg.name);
+                        
                         return \`
                             <div class="package-item">
                                 <div class="package-info">
+                                    <input type="checkbox" class="updates-checkbox" data-package="\${pkg.name}" \${isSelected ? 'checked' : ''} aria-label="Select \${pkg.name}">
                                     <span class="package-name">\${pkg.name}</span>
                                     <span class="package-version">\${pkg.version} → \${pkg.latest}</span>
                                 </div>
                                 <div class="package-actions">
-                                    <button class="update-button" data-package="\${pkg.name}">Update</button>
+                                    <button class="icon-button update-button tooltip" data-package="\${pkg.name}" data-tooltip="Update to \${pkg.latest}">⟳</button>
                                 </div>
                             </div>
                         \`;
                     }).join('');
+                    
+                    // Enable "Update All" button
+                    updateAll.disabled = false;
                 } else {
                     updatesPackagesList.innerHTML = '<div class="no-results">No updates available</div>';
+                    
+                    // Disable "Update All" button
+                    updateAll.disabled = true;
+                    
+                    // Clear update selections
+                    selectedUpdates.clear();
+                    updateButtonStates();
                 }
                 
-                // Add event listeners to buttons
+                // Add event listeners to buttons and checkboxes
                 document.querySelectorAll('.update-button').forEach(button => {
                     button.addEventListener('click', () => {
                         const packageName = button.getAttribute('data-package');
@@ -544,6 +818,17 @@ export class PipingDashboardPanel {
                         vsCode.postMessage({ command: 'uninstallPackage', package: packageName });
                     });
                 });
+                
+                document.querySelectorAll('.installed-checkbox').forEach(checkbox => {
+                    checkbox.addEventListener('change', () => handleInstalledCheckboxChange(checkbox));
+                });
+                
+                document.querySelectorAll('.updates-checkbox').forEach(checkbox => {
+                    checkbox.addEventListener('change', () => handleUpdatesCheckboxChange(checkbox));
+                });
+                
+                // Update button states
+                updateButtonStates();
             }
             
             // Render search results
@@ -562,7 +847,7 @@ export class PipingDashboardPanel {
                                 \${pkg.description ? \`<div>\${pkg.description}</div>\` : ''}
                             </div>
                             <div class="package-actions">
-                                <button class="install-button" data-package="\${pkg.name}">Install</button>
+                                <button class="icon-button install-button tooltip" data-package="\${pkg.name}" data-tooltip="Install">📦</button>
                             </div>
                         </div>
                     \`;
